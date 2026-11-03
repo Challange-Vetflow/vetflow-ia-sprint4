@@ -1,6 +1,6 @@
 # VetFlow IA: previsão de abandono de cuidados
 
-Serviço de inteligência artificial do **VetFlow**, o sistema de gestão veterinária da **CLYVO VET**. Para cada pet, ele responde três perguntas:
+Serviço de inteligência artificial do **VetFlow**, o sistema de gestão veterinária em parceria com a **CLYVO VET**. Para cada pet, ele responde três perguntas:
 
 1. **Qual o risco** de o tutor abandonar vacinas, retornos ou tratamento nos próximos 30 dias?
 2. **Por quê?** Os motivos vêm com os dados reais do pet.
