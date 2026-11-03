@@ -1,0 +1,464 @@
+{
+  "name": "VetFlow - Risco de abandono (agente + roteamento)",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "2",
+      "name": "Todo dia às 8h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "3",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        100
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "ai_url",
+              "type": "string",
+              "value": "https://SEU-SERVICO-DE-IA.exemplo.com"
+            },
+            {
+              "id": "a2",
+              "name": "limite",
+              "type": "number",
+              "value": 5
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "4",
+      "name": "Buscar pets em risco",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        100
+      ],
+      "parameters": {
+        "url": "={{ $json.ai_url }}/demo/pets",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "={{ $json.limite }}"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "VetFlow AI (X-API-Key)"
+        }
+      }
+    },
+    {
+      "id": "5",
+      "name": "Roteamento por nível",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        660,
+        100
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.nivel }}",
+                    "rightValue": "CRÍTICO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "CRÍTICO"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.nivel }}",
+                    "rightValue": "ATENÇÃO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "ATENÇÃO"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "NORMAL"
+        }
+      }
+    },
+    {
+      "id": "6",
+      "name": "Agente de contato",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        900,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Pet: {{ $json.pet_id }} | Tutor: {{ $json.tutor_nome }}\nScore: {{ $json.score }} | Nível: {{ $json.nivel }}\nAção recomendada pelo modelo: {{ $json.acao_recomendada }}\nFatores: {{ JSON.stringify($json.fatores) }}",
+        "options": {
+          "systemMessage": "Você é o assistente de relacionamento da clínica veterinária CLYVO VET (VetFlow).\nVocê recebe os dados de um pet já avaliado por um modelo preditivo de risco de abandono de cuidados.\nREGRAS:\n- NUNCA invente valores, datas, doses ou diagnósticos. Use SOMENTE o que vier nos dados ou da ferramenta consultar_risco_pet.\n- O score, o nível e a ação recomendada vêm do modelo; você NÃO os recalcula nem os contradiz.\n- Você não faz diagnóstico nem prescreve: decisões clínicas são do veterinário.\n- Se faltar informação, diga que a clínica confirmará por contato.\nTAREFA: responda APENAS com um JSON válido, sem texto fora dele, com as chaves:\n{\"mensagem_tutor\": \"mensagem curta, cordial, em português, citando o nome do pet e UMA ação concreta\",\n \"resumo_clinica\": \"2 a 3 linhas para a equipe: motivo do risco (use os fatores) e ação sugerida\"}"
+        }
+      }
+    },
+    {
+      "id": "7",
+      "name": "Modelo OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        880,
+        220
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "id": "8",
+      "name": "consultar_risco_pet",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1060,
+        220
+      ],
+      "parameters": {
+        "toolDescription": "Consulta o score, nível, fatores e ação recomendada de um pet pelo pet_id (somente leitura).",
+        "url": "={{ $('Config').first().json.ai_url }}/demo/pets/{pet_id}",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "pet_id",
+              "description": "ID numérico do pet",
+              "type": "number"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "VetFlow AI (X-API-Key)"
+        }
+      }
+    },
+    {
+      "id": "9",
+      "name": "Interpretar resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const base = $('Roteamento por nível').all()[item.pairedItem?.item ?? 0]?.json ?? {};\n  let txt = (item.json.output ?? '').replace(/```json|```/g, '').trim();\n  let r;\n  try { r = JSON.parse(txt); } catch (e) {\n    // fallback determinístico: se o LLM falhar, usa só dados do modelo\n    r = {mensagem_tutor: `Olá! Está na hora de cuidar do seu pet: ${base.acao_recomendada ?? 'agende uma consulta'}.`,\n         resumo_clinica: `Pet ${base.pet_id}: ${base.nivel}. ${base.acao_recomendada ?? ''}`};\n  }\n  out.push({json: {...base, ...r}});\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "10",
+      "name": "Telegram ao tutor",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1480,
+        -80
+      ],
+      "parameters": {
+        "chatId": "SEU_CHAT_ID_DE_TESTE",
+        "text": "={{ $json.mensagem_tutor }}",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram"
+        }
+      }
+    },
+    {
+      "id": "11",
+      "name": "E-mail para a clínica",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1700,
+        0
+      ],
+      "parameters": {
+        "fromEmail": "vetflow@exemplo.com",
+        "toEmail": "clinica@exemplo.com",
+        "subject": "=[CRÍTICO] Pet {{ $json.pet_id }} - contato prioritário",
+        "text": "={{ $json.resumo_clinica }}\n\nScore: {{ $json.score }}\nAção: {{ $json.acao_recomendada }}",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "",
+          "name": "SMTP"
+        }
+      }
+    },
+    {
+      "id": "13",
+      "name": "É CRÍTICO?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1480,
+        80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.nivel }}",
+              "rightValue": "CRÍTICO",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "12",
+      "name": "Sem ação (NORMAL)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Manual": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Todo dia às 8h": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Buscar pets em risco",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar pets em risco": {
+      "main": [
+        [
+          {
+            "node": "Roteamento por nível",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Roteamento por nível": {
+      "main": [
+        [
+          {
+            "node": "Agente de contato",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agente de contato",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sem ação (NORMAL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente de contato": {
+      "main": [
+        [
+          {
+            "node": "Interpretar resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo OpenAI": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente de contato",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_risco_pet": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente de contato",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar resposta": {
+      "main": [
+        [
+          {
+            "node": "Telegram ao tutor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "É CRÍTICO?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É CRÍTICO?": {
+      "main": [
+        [
+          {
+            "node": "E-mail para a clínica",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
